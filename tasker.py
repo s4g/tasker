@@ -1,4 +1,4 @@
-from __future__ import print_function
+from __future__ import print_function, unicode_literals
 import sys, os, io
 import inspect
 import pkgutil
@@ -14,14 +14,14 @@ def format_docsting(docstring, additional_indent=0):
     """Adapted from pep 257"""
     lines = docstring.expandtabs().splitlines()
 
-    indent = sys.maxint
+    indent = sys.maxsize
     for line in lines[1:]:
         stripped = line.lstrip()
         if stripped:
             indent = min(indent, len(line) - len(stripped))
 
     trimmed = [lines[0].strip()]
-    if indent < sys.maxint:
+    if indent < sys.maxsize:
         for line in lines[1:]:
             trimmed.append(line[indent:].rstrip())
 
@@ -113,13 +113,13 @@ if __name__ == '__main__':
     else:
         raise ImportError('Unable to detect fully qualified tasker module name')
 
-    main_params = u'"{}"'.format(sys.argv[1]) if len(sys.argv) > 1 else ''
+    main_params = '"{}"'.format(sys.argv[1]) if len(sys.argv) > 1 else ''
     if sys.platform.startswith('win'):
         with io.open('run_task.bat', 'wt') as f:
             f.write(u'@{} run_task.py %1 %2 %3 %4 %5 %6 %7 %8 %9\n'.format(sys.executable))
 
         with io.open('run_task.py', 'wt') as f:
-            f.write(u'from {} import main\nmain({})\n'.format(fq_module, main_params))
+            f.write('from {} import main\nmain({})\n'.format(fq_module, main_params))
     else:
         code = u'\n'.join([
             '#!' + sys.executable,

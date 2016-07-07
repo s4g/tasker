@@ -8,7 +8,7 @@ def long_description():
 
 setup(
     name='tasker',
-    version='0.1.1',
+    version='0.1.2',
     py_modules=['tasker'],
     url='https://github.com/s4g/tasker',
     license='MIT License',
