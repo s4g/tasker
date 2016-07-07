@@ -1,5 +1,5 @@
 import io
-from distutils.core import setup
+from setuptools import setup
 
 
 def long_description():
