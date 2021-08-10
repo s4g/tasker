@@ -93,6 +93,8 @@ Installation
 
     pip install tasker
 
+The current version is Python 3 only. Use version 0.1.2 for Python 2.7.
+
 Origin
 ------
 

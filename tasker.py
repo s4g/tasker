@@ -1,13 +1,10 @@
-from __future__ import print_function, unicode_literals
 import sys, os, io
 import inspect
 import pkgutil
 import importlib
 import operator
 
-
-def real_abs_path(path):
-    return os.path.realpath(os.path.abspath(path))
+ARGPARSE_SIG = '(*ap_args)'
 
 
 def format_docsting(docstring, additional_indent=0):
@@ -34,35 +31,46 @@ def format_docsting(docstring, additional_indent=0):
     return '\n'.join((indent_str + line) for line in trimmed)
 
 
+def list_package(package_name: str):
+    package = importlib.import_module(package_name)
+    for _, module_name, is_pkg in pkgutil.walk_packages(package.__path__):
+        qualified_name = package_name + "." + module_name
+        yield qualified_name
+        if is_pkg:
+            yield from list_package(qualified_name)
+
+
 def print_usage(tasks_package_name, verbose=False):
-    tasks_package_path = importlib.import_module(tasks_package_name).__path__[0]
-    task_module_names = [tasks_package_name] + [(tasks_package_name + '.' + mn)
-        for mn in sorted(i[1] for i in pkgutil.walk_packages([tasks_package_path]))]
     common_trim_len = len(tasks_package_name) + 1
 
     print('Usage: %s <task-name> [parameter, ...]\n' % os.path.basename(sys.argv[0]))
     print('All available tasks:')
     print('    help      # print help screen')
-    print('    morehelp  # print verbose help screen')
 
-    for task_module_name in task_module_names:
+    module_names = [tasks_package_name] + list(list_package(tasks_package_name))
+
+    for task_module_name in module_names:
         try:
             task_module = importlib.import_module(task_module_name)
         except ImportError:
             print('Failed to import', task_module_name)
         else:
             docstring = '# ' + task_module.__doc__ if task_module.__doc__ else ''
-            print('\n    In module {}  {}'.format(task_module_name, docstring))
 
             all_tasks = [(fn, fun) for fn, fun in vars(task_module).items()
                 if (fn.endswith('_task') and inspect.isfunction(fun))]
+
+            if all_tasks:
+                print('\n    In module {}  {}'.format(task_module_name, docstring))
 
             for fn, fun in sorted(all_tasks, key=operator.itemgetter(0)):
                 prefix = task_module_name[common_trim_len:]
                 task_name = fn[:-5]  # remove the suffix "_task"
                 qualified_name = (prefix + '.' + task_name) if prefix else task_name
-                print('        {} :  {}'.format(
-                    qualified_name, inspect.formatargspec(*inspect.getargspec(fun))))
+                signature = str(inspect.signature(fun))
+                if signature == ARGPARSE_SIG:
+                    signature = 'Argparse based. Run with --help for full parameter list'
+                print('        {} :  {}'.format(qualified_name, signature))
                 if fun.__doc__ is not None:
                     if verbose:
                         print(format_docsting(fun.__doc__, 12))
@@ -71,30 +79,43 @@ def print_usage(tasks_package_name, verbose=False):
                         print(format_docsting(fun.__doc__, 12).split('\n', 1)[0])
 
 
-def main(tasks_package_name='tasks'):
-    base_path = os.path.dirname(real_abs_path(inspect.stack()[1][0].f_globals['__file__']))
-    sys.path.insert(0, base_path)
-    tasks_path_split = tasks_package_name.split('.')
+def get_task_function(tasks_package_name, fq_task_function):
+    if '.' in fq_task_function:
+        task_module_name, task_name = fq_task_function.rsplit('.', maxsplit=1)
+        fq_task_module_name = f'{tasks_package_name}.{task_module_name}'
+    else:
+        task_name = fq_task_function
+        fq_task_module_name = tasks_package_name
 
+    task_module = importlib.import_module(fq_task_module_name)
+    return getattr(task_module, task_name + '_task')
+
+
+def main(tasks_package_name='tasks'):
     if len(sys.argv) < 2:
         print('ERROR: Missing parameters. Assuming "help" task\n')
         task = 'help'
         args = []
     else:
-        task = sys.argv[1]
-        args = sys.argv[2:]
+        task, *args = sys.argv[1:]
 
     if task == 'help':
-        print_usage(tasks_package_name)
-    elif task == 'morehelp':
-        print_usage(tasks_package_name, verbose=True)
+        if args:
+            fn, *_ = args
+            task_function = get_task_function(tasks_package_name, fn)
+            signature = str(inspect.signature(task_function))
+            if signature == ARGPARSE_SIG:
+                sys.argv[0] = fn
+                task_function('--help')
+            else:
+                print('        {} :  {}'.format(fn, signature))
+                print(format_docsting(task_function.__doc__, 12))
+            print()
+        else:
+            print_usage(tasks_package_name)
     else:
-        task_split = task.split('.')
-        task_module_name = '.'.join(tasks_path_split + task_split[:-1])
-        task_function_name = task_split[-1] + '_task'
         try:
-            task_module = importlib.import_module(task_module_name)
-            task_function = getattr(task_module, task_function_name)
+            task_function = get_task_function(tasks_package_name, task)
         except (ImportError, AttributeError):
             print('Task', task, 'not found')
         else:
@@ -102,29 +123,20 @@ def main(tasks_package_name='tasks'):
 
 
 if __name__ == '__main__':
-    parsed_path = os.path.splitext(os.path.splitdrive(__file__)[1])[0].split(os.sep)
-    for j in range(1, len(parsed_path)):
-        fq_module = '.'.join(parsed_path[-j:])
-        try:
-            __import__(fq_module)
-            break
-        except ImportError:
-            continue
-    else:
-        raise ImportError('Unable to detect fully qualified tasker module name')
+    fq_module = f'{__package__}.tasker' if __package__ else 'tasker'
 
     main_params = '"{}"'.format(sys.argv[1]) if len(sys.argv) > 1 else ''
     if sys.platform.startswith('win'):
         with io.open('run_task.bat', 'wt') as f:
-            f.write(u'@{} run_task.py %1 %2 %3 %4 %5 %6 %7 %8 %9\n'.format(sys.executable))
+            f.write(f'@{sys.executable} run_task.py %1 %2 %3 %4 %5 %6 %7 %8 %9\n')
 
         with io.open('run_task.py', 'wt') as f:
-            f.write('from {} import main\nmain({})\n'.format(fq_module, main_params))
+            f.write(f'from {fq_module} import main\nmain({main_params})\n')
     else:
-        code = u'\n'.join([
+        code = '\n'.join([
             '#!' + sys.executable,
-            'from %s import main' % fq_module,
-            'main(%s)\n' % main_params
+            f'from {fq_module} import main',
+            f'main({main_params})\n'
         ])
 
         with io.open('run_task', 'wt') as f:
