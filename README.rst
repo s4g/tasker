@@ -80,12 +80,12 @@ With the above setup we can run the following examples in the current directory
 
 ::
 
-    ./run_task taskone foo
-    ./run_task tasktwo foo baz
-    ./run_task tasktwo foo               # fails, not enough parameters
-    ./run_task module1.t1 spam
-    ./run_task module1.t2 spam ham
-    ./run_task module1.t2 spam     # works too because of default value of the second parameter
+    ./run_task taskone foo          # prints foo
+    ./run_task tasktwo foo baz      # prints foo, baz
+    ./run_task tasktwo foo          # fails, not enough parameters
+    ./run_task module1.t1 spam      # prints spam
+    ./run_task module1.t2 spam ham  # prints spam, ham
+    ./run_task module1.t2 spam      # works too because of default value of the second parameter
 
 You will want to put something meaningful in your tasks.
 
@@ -116,7 +116,7 @@ then include the following in your setuptools-based ``setup.py``:
             ],
         }
 
-This setup will create script ``myproject_run_task``, which will know about your tasks.
+This setup will create script ``myproject_run_task``, which will run your tasks.
 
 Installation
 ------------
